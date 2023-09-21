@@ -6,7 +6,9 @@ let
   inherit (pkgs.lib.strings) concatStringsSep;
   inherit (pkgs.lib.trivial) id;
   inherit (pkgs.lib.modules) mkForce;
-  inherit (pkgs.lib.attrsets) mapAttrsToList attrValues foldlAttrs concatMapAttrs;
+  inherit (pkgs.lib.attrsets) mapAttrsToList attrValues concatMapAttrs attrNames;
+
+  foldlAttrs = pkgs.lib.attrsets.foldlAttrs or (f: i: s: foldl' (a: n: f a n s.${n}) i (attrNames s));
 
   d = x: builtins.trace x x;
 
