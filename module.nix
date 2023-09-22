@@ -1,7 +1,7 @@
 { pkgs, config, ... }:
 let
-  inherit (builtins) isFunction readFile toPath;
-  inherit (pkgs) writeText;
+  inherit (builtins) isFunction readFile;
+  inherit (pkgs) writeText copyPathToStore;
   inherit (pkgs.lib.lists) foldl';
   inherit (pkgs.lib.strings) concatStringsSep;
   inherit (pkgs.lib.trivial) id;
@@ -322,8 +322,8 @@ in
 
   config =
     let
-      allSecrets = (foldlAttrs (a: _: v: a // foldlAttrs (a': _: v': a' // { ${v'.decrypted.name} = toPath v'.encrypted.file; }) { } v.secrets) { } cfg.services) //
-        foldlAttrs (a: _: v: a // { ${v.decrypted.name} = toPath v.encrypted.file; }) { } cfg.system.secrets;
+      allSecrets = (foldlAttrs (a: _: v: a // foldlAttrs (a': _: v': a' // { ${v'.decrypted.name} = copyPathToStore v'.encrypted.file; }) { } v.secrets) { } cfg.services) //
+        foldlAttrs (a: _: v: a // { ${v.decrypted.name} = copyPathToStore v.encrypted.file; }) { } cfg.system.secrets;
       systemKeysService = { ${cfg.system.secretsServiceName} = {
         wantedBy = [ "multi-user.target" ];
         serviceConfig = {
