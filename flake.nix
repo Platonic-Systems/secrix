@@ -70,7 +70,7 @@
                 -u, -s, and -r operate the same as in ENCRYPTION.
 
             EDITING
-              nix run .#secrix edit FILE -- -i [-u USER | --all-users] [-s SYSTEM | --all-systems] [-r RECIPIENT]
+              nix run .#secrix edit FILE -- -i IDENTITY_FILE [-u USER | --all-users] [-s SYSTEM | --all-systems] [-r RECIPIENT]
                 All flags operate the same as in REENCRYPTION.
 
             OTHER
@@ -104,9 +104,12 @@
                 recips+="''${userKeys["$1"]}"
               '';
             };
-            all-users.run = ''
-              recips+="''${userKeys[@]}"
-            '';
+            all-users = {
+              run = ''
+                recips+="''${userKeys[@]}"
+              '';
+              takes = 0;
+            };
             s = {
               long = "system";
               run = ''
@@ -123,9 +126,12 @@
                 identityFile="$1"
               '';
             };
-            all-systems.run = ''
-              recips+="''${hostKeys["$1"]}"
-            '';
+            all-systems = {
+              run = ''
+                recips+="''${hostKeys["$1"]}"
+              '';
+              takes = 0;
+            };
             list-users.run = ''
               for i in "''${!userKeys[@]}"; do
                 echo "$i"
@@ -174,80 +180,80 @@
           allSecrets = allSystemSecrets ++ flatten (map (x: attrValues x.secrets) allServices);
           allUsers = flatten (map (x: x.encryptKeys) allSecrets);
           allKeys = foldl' (a: x: a // mapAttrs (n: v: unique (v ++ (a.${n} or []))) x) {} allUsers;
-          hostKeys = mapAttrs (_: v: " -r ${v.config.secrix.hostPubKey}") (filterAttrs (_: v': v'.config.secrix.hostPubKey != null) fInputs.nixosConfigurations);
+          hostKeys = mapAttrs (_: v: " -r '${v.config.secrix.hostPubKey}'") (filterAttrs (_: v': v'.config.secrix.hostPubKey != null) fInputs.nixosConfigurations);
         in (writeShellScript "secrix" ''
-            function help {
-              ${help}
-            }
-            recips=""
-            identityFile=""
-            declare -A userKeys
-            declare -A hostKeys
-            ${foldlAttrs (a: n: v: ''
-              ${a}
-              userKeys['${n}']="${foldl' (a': x: "${a'} -r '${x}'") "" v}"
-            '') "" allKeys}
-            ${foldlAttrs (a: n: v: ''
-              ${a}
-              hostKeys['${n}']="${v}"
-            '') "" hostKeys}
-            ${getopts opts}
+          function help {
+            ${help}
+          }
+          recips=""
+          identityFile=""
+          declare -A userKeys
+          declare -A hostKeys
+          ${foldlAttrs (a: n: v: ''
+            ${a}
+            userKeys['${n}']="${foldl' (a': x: "${a'} -r '${x}'") "" v}"
+          '') "" allKeys}
+          ${foldlAttrs (a: n: v: ''
+            ${a}
+            hostKeys['${n}']="${v}"
+          '') "" hostKeys}
+          ${getopts opts}
 
-            if [[ ''${#positionalOpts[@]} == 0 ]]; then
-              help
-              exit 1
-            fi
-            case "''${positionalOpts[0]}" in
-              create)
-                tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
-                ${edit} "$tmpsec"
-                if [[ $? != 0 ]]; then
-                  echo "Editor exited with a non-zero status. Doing nothing."
-                else
-                  eval ${pkgs.rage}/bin/rage -e $recips "$tmpsec" > "''${positionalOpts[1]}"
-                fi
-                ${pkgs.coreutils}/bin/rm "$tmpsec"
-              ;;
-              rekey)
-                if [[ -z "''$identityFile" ]]; then
-                  echo "No given identity file."
-                  exit 1
-                elif ! [[ -e "''$identityFile" ]]; then
-                  echo "Identity file does not exist."
-                  exit 1
-                fi
-                tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
-                if ! eval ${pkgs.rage}/bin/rage -d -i "$identityFile" "''${positionalOpts[1]}" > "$tmpsec"; then
-                  ${pkgs.coreutils}/bin/rm "$tmpsec"
-                  exit 1
-                fi
+          if [[ ''${#positionalOpts[@]} == 0 ]]; then
+            help
+            exit 1
+          fi
+          case "''${positionalOpts[0]}" in
+            create)
+              tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
+              ${edit} "$tmpsec"
+              if [[ $? != 0 ]]; then
+                echo "Editor exited with a non-zero status. Doing nothing."
+              else
                 eval ${pkgs.rage}/bin/rage -e $recips "$tmpsec" > "''${positionalOpts[1]}"
+              fi
+              ${pkgs.coreutils}/bin/rm "$tmpsec"
+            ;;
+            rekey)
+              if [[ -z "''$identityFile" ]]; then
+                echo "No given identity file."
+                exit 1
+              elif ! [[ -e "''$identityFile" ]]; then
+                echo "Identity file does not exist."
+                exit 1
+              fi
+              tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
+              if ! eval ${pkgs.rage}/bin/rage -d -i "$identityFile" "''${positionalOpts[1]}" > "$tmpsec"; then
                 ${pkgs.coreutils}/bin/rm "$tmpsec"
-              ;;
-              edit)
-                if [[ -z "''$identityFile" ]]; then
-                  echo "No given identity file."
-                  exit 1
-                elif ! [[ -e "''$identityFile" ]]; then
-                  echo "Identity file does not exist."
-                  exit 1
-                fi
-                tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
-                if ! eval ${pkgs.rage}/bin/rage -d -i "$identityFile" "''${positionalOpts[1]}" > "$tmpsec"; then
-                  ${pkgs.coreutils}/bin/rm "$tmpsec"
-                  exit 1
-                fi
-                ${edit} "$tmpsec"
-                if [[ $? != 0 ]]; then
-                  echo "Editor exited with a non-zero status. Doing nothing."
-                else
-                  eval ${pkgs.rage}/bin/rage -e $recips "$tmpsec" > "''${positionalOpts[1]}"
-                fi
+                exit 1
+              fi
+              eval ${pkgs.rage}/bin/rage -e $recips "$tmpsec" > "''${positionalOpts[1]}"
+              ${pkgs.coreutils}/bin/rm "$tmpsec"
+            ;;
+            edit)
+              if [[ -z "''$identityFile" ]]; then
+                echo "No given identity file."
+                exit 1
+              elif ! [[ -e "''$identityFile" ]]; then
+                echo "Identity file does not exist."
+                exit 1
+              fi
+              tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
+              if ! eval ${pkgs.rage}/bin/rage -d -i "$identityFile" "''${positionalOpts[1]}" > "$tmpsec"; then
                 ${pkgs.coreutils}/bin/rm "$tmpsec"
-              ;;
-              *)
-              ;;
-            esac
+                exit 1
+              fi
+              ${edit} "$tmpsec"
+              if [[ $? != 0 ]]; then
+                echo "Editor exited with a non-zero status. Doing nothing."
+              else
+                eval ${pkgs.rage}/bin/rage -e $recips "$tmpsec" > "''${positionalOpts[1]}"
+              fi
+              ${pkgs.coreutils}/bin/rm "$tmpsec"
+            ;;
+            *)
+            ;;
+          esac
         '').outPath;
       };
       nixosModules = {

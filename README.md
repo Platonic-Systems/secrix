@@ -14,6 +14,29 @@ For encryption/decryption usage, see `nix run .#secrix -- --help`.
 inputs.secrix.url = "github:Platonic-Systems/secrix";
 ```
 
+## Getting Started
+
+In your `flake.nix`, simply define an `app` as such:
+
+```nix
+{
+    apps.x86_64-linux.secrix = intpus.secrix.secrix self;
+}
+```
+
+This in and of itself is enough to start using Secrix. Ideally, for ease of use, you should define some options that
+will make your life easier when using Secrix. Defining `secrix.defaultEncryptionKeys` (or
+`encryptKeys` for any given secret) as an attribute set as such:
+
+```nix
+secrix.defaultEncryptonKeys = {
+    my-user = [ "my-key" ];
+}
+```
+
+will allow you to use `--u my-user` when encrypting a secret. Similarly, defining `secrix.hostPubKey` for some
+`nixosConfigurations` will allow you to use `-s my-host` (assuming `outputs.nixosConfigurations.my-host`).
+
 ## Defining Secrets
 
 ### Binding a Secret to a Service
