@@ -20,7 +20,7 @@ In your `flake.nix`, simply define an `app` as such:
 
 ```nix
 {
-    apps.x86_64-linux.secrix = intpus.secrix.secrix self;
+    apps.x86_64-linux.secrix = inputs.secrix.secrix self;
 }
 ```
 
