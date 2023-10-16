@@ -284,5 +284,26 @@
         secrix = import ./module.nix;
         default = import ./module.nix;
       };
+      checks.x86_64-linux = {
+        # If you define a secret, it is available in its service.
+        # If you define a secret, it is not available in another service.
+        # If you define a secret, it is not available if the service is not running.
+        # If you define a system secret, it is available in any service.
+        # If you define a system secret, it is not available to services without permissions.
+        # The module evaluates, bare minimum.
+        e2e-test = pkgs.nixosTest {
+          name = "secrix-e2e-test";
+          nodes = {
+            machine = {
+              imports = [
+                self.nixosModules.secrix
+              ];
+            };
+          };
+          testScript = ''
+            start_all()
+          '';
+        };
+      };
     };
 }
