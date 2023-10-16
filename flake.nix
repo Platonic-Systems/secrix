@@ -285,14 +285,15 @@
         default = import ./module.nix;
       };
       checks.x86_64-linux = {
-        # If you define a secret, it is available in its service.
-        # If you define a secret, it is not available in another service.
-        # If you define a secret, it is not available if the service is not running.
-        # If you define a system secret, it is available in any service.
-        # If you define a system secret, it is not available to services without permissions.
         # This E2E test tests:
         # * The module evaluates, bare minimum.
         # * It is possible to define a system secret.
+        # * If you define a system secret, it is available in any service.
+        # TODO
+        # * If you define a secret, it is available in its service.
+        # * If you define a secret, it is not available in another service.
+        # * If you define a secret, it is not available if the service is not running.
+        # * If you define a system secret, it is not available to services without permissions.
         e2e-test = pkgs.nixosTest {
           name = "secrix-e2e-test";
           nodes = {
@@ -300,19 +301,34 @@
               imports = [
                 self.nixosModules.secrix
               ];
+              services.openssh.enable = true;
+              system.activationScripts.replaceHostKey = ''
+                mkdir -p /etc/ssh
+                cp ${./keys/test-host-key} /etc/ssh/ssh_host_ed25519_key
+                cp ${./keys/test-host-key.pub} /etc/ssh/ssh_host_ed25519_key.pub
+              '';
               secrix = {
                 hostPubKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKn43IR9yp8zhEWUhRmiA+rnd05t99ubTMJY7/ljd+yj chloe@freyja";
                 defaultEncryptKeys.user = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM64lwxKaEiwWLsV5Y/g0/4ZGPN+Ri2gz15mHVd716pu chloe@freyja" ];
-                system.secrets.secret1.encrypted.file = ./secrets/secret;
+                system.secrets.secret1.encrypted.file = ./secrets/system-secret1;
               };
-              environment.etc.secret1.source = config.secrix.system.secrets.secret1.decrypted.path;
             };
           };
           testScript = ''
             start_all()
 
+            # Wait for the machine to boot.
+            machine.wait_for_unit("multi-user.target")
+
+            machine.wait_for_unit("system-keys.service")
+            out = machine.succeed("journalctl -eu system-keys.service")
+            print(out)
+
             # The machine secret exists.
-            machine.succeed("test -e /etc/secret1")
+            machine.succeed("cat /run/system-keys/secret1")
+
+            # * If you define a system secret, it is available in any service.
+
           '';
         };
       };
