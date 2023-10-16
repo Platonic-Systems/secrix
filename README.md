@@ -34,7 +34,7 @@ secrix.defaultEncryptonKeys = {
 }
 ```
 
-will allow you to use `--u my-user` when encrypting a secret. Similarly, defining `secrix.hostPubKey` for some
+will allow you to use `-u my-user` when encrypting a secret. Similarly, defining `secrix.hostPubKey` for some
 `nixosConfigurations` will allow you to use `-s my-host` (assuming `outputs.nixosConfigurations.my-host`).
 
 ## Defining Secrets
