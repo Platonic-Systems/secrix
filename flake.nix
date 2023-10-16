@@ -4,9 +4,10 @@
   outputs = { self, ... }@inputs:
     let
       inherit (pkgs) writeShellScript;
-      inherit (pkgs.lib.lists) foldl' flatten unique map filter elem genList;
+      inherit (pkgs.lib.lists) foldl' flatten unique map filter elem genList last length;
       inherit (pkgs.lib.strings) splitString concatStringsSep stringLength optionalString;
-      inherit (pkgs.lib.attrsets) attrValues mapAttrsToList filterAttrs attrNames mapAttrs foldlAttrs attrByPath;
+      inherit (pkgs.lib.trivial) warnIf;
+      inherit (pkgs.lib.attrsets) attrValues mapAttrsToList filterAttrs attrNames mapAttrs foldlAttrs;
 
       pkgs = inputs.nixpkgs.legacyPackages."x86_64-linux";
 
@@ -181,7 +182,10 @@
           allUsers = flatten (map (x: x.encryptKeys) allSecrets);
           allKeys = foldl' (a: x: a // mapAttrs (n: v: unique (v ++ (a.${n} or []))) x) {} allUsers;
           hostKeys = mapAttrs (_: v: " -r '${v.config.secrix.hostPubKey}'") (filterAttrs (_: v': v'.config.secrix.hostPubKey != null) fInputs.nixosConfigurations);
-          ageBin = foldl' (attrByPath [ "config" "secrix" "ageBin" ]) "${pkgs.age}/bin/age" (attrValues fInputs.nixosConfigurations);
+          ageBin = let
+            bins = unique (map (x: x.config.secrix.ageBin) (attrValues fInputs.nixosConfigurations));
+            l = last bins;
+          in warnIf (length bins > 1) "More than one ageBin definition exists, using '${l}'." l;
         in (writeShellScript "secrix" ''
           function help {
             ${help}
