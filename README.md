@@ -25,11 +25,11 @@ In your `flake.nix`, simply define an `app` as such:
 ```
 
 This in and of itself is enough to start using Secrix. Ideally, for ease of use, you should define some options that
-will make your life easier when using Secrix. Defining `secrix.defaultEncryptionKeys` (or
+will make your life easier when using Secrix. Defining `secrix.defaultEncryptKeys` (or
 `encryptKeys` for any given secret) as an attribute set as such:
 
 ```nix
-secrix.defaultEncryptonKeys = {
+secrix.defaultEncryptKeys = {
     my-user = [ "my-key" ];
 }
 ```
@@ -83,7 +83,7 @@ The private key of the host that will be decrypting the secret.
 * Type: String
 * Default: `"/etc/ssh/ssh_host_ed25519_key"`
 
-### `secrix.defaultEncryptionKeys`
+### `secrix.defaultEncryptKeys`
 
 The default encryption keys for all secrets. This will be overriden for any given secret if `encryptKeys` is specified for that secret.
 

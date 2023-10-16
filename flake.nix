@@ -290,18 +290,29 @@
         # If you define a secret, it is not available if the service is not running.
         # If you define a system secret, it is available in any service.
         # If you define a system secret, it is not available to services without permissions.
-        # The module evaluates, bare minimum.
+        # This E2E test tests:
+        # * The module evaluates, bare minimum.
+        # * It is possible to define a system secret.
         e2e-test = pkgs.nixosTest {
           name = "secrix-e2e-test";
           nodes = {
-            machine = {
+            machine = { config, ... }: {
               imports = [
                 self.nixosModules.secrix
               ];
+              secrix = {
+                hostPubKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKn43IR9yp8zhEWUhRmiA+rnd05t99ubTMJY7/ljd+yj chloe@freyja";
+                defaultEncryptKeys.user = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM64lwxKaEiwWLsV5Y/g0/4ZGPN+Ri2gz15mHVd716pu chloe@freyja" ];
+                system.secrets.secret1.encrypted.file = ./secrets/secret;
+              };
+              environment.etc.secret1.source = config.secrix.system.secrets.secret1.decrypted.path;
             };
           };
           testScript = ''
             start_all()
+
+            # The machine secret exists.
+            machine.succeed("test -e /etc/secret1")
           '';
         };
       };
