@@ -20,7 +20,7 @@ in
     secrix = {
       ageBin = mkOption {
         type = types.str;
-        default = "${pkgs.rage}/bin/rage";
+        default = "${pkgs.age}/bin/age";
         description = ''
           The age bin to use for encryption and decryption.
         '';

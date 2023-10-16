@@ -74,7 +74,7 @@ System secrets are not bound to anything except the system's lifetime via their 
 The age bin to use for encryption and decryption.
 
 * Type: String
-* Default: `"${pkgs.rage}/bin/rage"`
+* Default: `"${pkgs.age}/bin/age"`
 
 ### `secrix.hostIdentityFile`
 

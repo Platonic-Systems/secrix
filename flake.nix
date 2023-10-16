@@ -6,7 +6,7 @@
       inherit (pkgs) writeShellScript;
       inherit (pkgs.lib.lists) foldl' flatten unique map filter elem genList;
       inherit (pkgs.lib.strings) splitString concatStringsSep stringLength optionalString;
-      inherit (pkgs.lib.attrsets) attrValues mapAttrsToList filterAttrs attrNames mapAttrs foldlAttrs;
+      inherit (pkgs.lib.attrsets) attrValues mapAttrsToList filterAttrs attrNames mapAttrs foldlAttrs attrByPath;
 
       pkgs = inputs.nixpkgs.legacyPackages."x86_64-linux";
 
@@ -181,6 +181,7 @@
           allUsers = flatten (map (x: x.encryptKeys) allSecrets);
           allKeys = foldl' (a: x: a // mapAttrs (n: v: unique (v ++ (a.${n} or []))) x) {} allUsers;
           hostKeys = mapAttrs (_: v: " -r '${v.config.secrix.hostPubKey}'") (filterAttrs (_: v': v'.config.secrix.hostPubKey != null) fInputs.nixosConfigurations);
+          ageBin = foldl' (attrByPath [ "config" "secrix" "ageBin" ]) "${pkgs.age}/bin/age" (attrValues fInputs.nixosConfigurations);
         in (writeShellScript "secrix" ''
           function help {
             ${help}
@@ -210,7 +211,7 @@
               if [[ $? != 0 ]]; then
                 echo "Editor exited with a non-zero status. Doing nothing."
               else
-                eval ${pkgs.rage}/bin/rage -e $recips "$tmpsec" > "''${positionalOpts[1]}"
+                eval ${ageBin} -e $recips "$tmpsec" > "''${positionalOpts[1]}"
               fi
               ${pkgs.coreutils}/bin/rm "$tmpsec"
             ;;
@@ -223,11 +224,11 @@
                 exit 1
               fi
               tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
-              if ! eval ${pkgs.rage}/bin/rage -d -i "$identityFile" "''${positionalOpts[1]}" > "$tmpsec"; then
+              if ! eval ${ageBin} -d -i "$identityFile" "''${positionalOpts[1]}" > "$tmpsec"; then
                 ${pkgs.coreutils}/bin/rm "$tmpsec"
                 exit 1
               fi
-              eval ${pkgs.rage}/bin/rage -e $recips "$tmpsec" > "''${positionalOpts[1]}"
+              eval ${ageBin} -e $recips "$tmpsec" > "''${positionalOpts[1]}"
               ${pkgs.coreutils}/bin/rm "$tmpsec"
             ;;
             edit)
@@ -239,7 +240,7 @@
                 exit 1
               fi
               tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
-              if ! eval ${pkgs.rage}/bin/rage -d -i "$identityFile" "''${positionalOpts[1]}" > "$tmpsec"; then
+              if ! eval ${ageBin} -d -i "$identityFile" "''${positionalOpts[1]}" > "$tmpsec"; then
                 ${pkgs.coreutils}/bin/rm "$tmpsec"
                 exit 1
               fi
@@ -247,7 +248,7 @@
               if [[ $? != 0 ]]; then
                 echo "Editor exited with a non-zero status. Doing nothing."
               else
-                eval ${pkgs.rage}/bin/rage -e $recips "$tmpsec" > "''${positionalOpts[1]}"
+                eval ${ageBin} -e $recips "$tmpsec" > "''${positionalOpts[1]}"
               fi
               ${pkgs.coreutils}/bin/rm "$tmpsec"
             ;;
