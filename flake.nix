@@ -186,6 +186,16 @@
           function help {
             ${help}
           }
+          function checkid {
+            if [[ -z "$identityFile" ]]; then
+              echo "No given identity file."
+              exit 1
+            elif ! [[ -e "$identityFile" ]]; then
+              echo "Identity file does not exist."
+              exit 1
+            fi
+          }
+          status=0
           recips=""
           identityFile=""
           declare -A userKeys
@@ -207,54 +217,63 @@
           case "''${positionalOpts[0]}" in
             create)
               tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
-              ${edit} "$tmpsec"
-              if [[ $? != 0 ]]; then
-                echo "Editor exited with a non-zero status. Doing nothing."
+              if ! ${edit} "$tmpsec"; then
+                echo "Editor exited with non-zero status. Abandoning."
+                status=1
               else
-                eval ${ageBin} -e $recips "$tmpsec" > "''${positionalOpts[1]}"
+                tmpfin="$(${pkgs.coreutils}/bin/mktemp)"
+                if ! eval ${ageBin} -e $recips "$tmpsec" > "$tmpfin"; then
+                  echo "Encrypt failed with non-zero status. Abandoning."
+                  status=1
+                else
+                  ${pkgs.coreutils}/bin/mv "$tmpfin" "''${positionalOpts[1]}"
+                fi
               fi
-              ${pkgs.coreutils}/bin/rm "$tmpsec"
             ;;
             rekey)
-              if [[ -z "''$identityFile" ]]; then
-                echo "No given identity file."
-                exit 1
-              elif ! [[ -e "''$identityFile" ]]; then
-                echo "Identity file does not exist."
-                exit 1
-              fi
+              checkid
               tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
               if ! eval ${ageBin} -d -i "$identityFile" "''${positionalOpts[1]}" > "$tmpsec"; then
-                ${pkgs.coreutils}/bin/rm "$tmpsec"
-                exit 1
+                echo "Decrypt failed with non-zero status. Abandoning."
+                status=1
+              else
+                tmpfin="$(${pkgs.coreutils}/bin/mktemp)"
+                if ! eval ${ageBin} -e $recips "$tmpsec" > "$tmpfin"; then
+                  echo "Reencrypt failed with non-zero status. Abandoning."
+                  status=1
+                else
+                  ${pkgs.coreutils}/bin/mv "$tmpfin" "''${positionalOpts[1]}"
+                fi
               fi
-              eval ${ageBin} -e $recips "$tmpsec" > "''${positionalOpts[1]}"
-              ${pkgs.coreutils}/bin/rm "$tmpsec"
             ;;
             edit)
-              if [[ -z "''$identityFile" ]]; then
-                echo "No given identity file."
-                exit 1
-              elif ! [[ -e "''$identityFile" ]]; then
-                echo "Identity file does not exist."
-                exit 1
-              fi
+              checkid
               tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
               if ! eval ${ageBin} -d -i "$identityFile" "''${positionalOpts[1]}" > "$tmpsec"; then
-                ${pkgs.coreutils}/bin/rm "$tmpsec"
-                exit 1
-              fi
-              ${edit} "$tmpsec"
-              if [[ $? != 0 ]]; then
-                echo "Editor exited with a non-zero status. Doing nothing."
+                echo "Decrypt failed with non-zero status. Abandoning."
+                status=1
               else
-                eval ${ageBin} -e $recips "$tmpsec" > "''${positionalOpts[1]}"
+                if ! ${edit} "$tmpsec"; then
+                  echo "Editor exited with non-zero status. Abandoning."
+                  status=1
+                else
+                  tmpfin="$(${pkgs.coreutils}/bin/mktemp)"
+                  if ! eval ${ageBin} -e $recips "$tmpsec" > "$tmpfin"; then
+                    echo "Encrypt failed with non-zero status. Abandoning."
+                    status=1
+                  else
+                    ${pkgs.coreutils}/bin/mv "$tmpfin" "''${positionalOpts[1]}"
+                  fi
+                fi
               fi
-              ${pkgs.coreutils}/bin/rm "$tmpsec"
             ;;
             *)
+              echo "Unknown action '""''${positionalOpts[0]}.'"
             ;;
           esac
+          ${pkgs.coreutils}/bin/rm -f "$tmpfin"
+          ${pkgs.coreutils}/bin/rm -f "$tmpsec"
+          exit $status
         '').outPath;
       };
       nixosModules = {
