@@ -3,11 +3,12 @@
 
   outputs = { self, ... }@inputs:
     let
+      inherit (builtins) toString;
       inherit (pkgs) writeShellScript;
-      inherit (pkgs.lib.lists) foldl' flatten unique map filter elem genList last length;
-      inherit (pkgs.lib.strings) splitString concatStringsSep stringLength optionalString;
+      inherit (pkgs.lib.lists) foldl' flatten unique map filter elem genList last length range toList;
+      inherit (pkgs.lib.strings) splitString concatStringsSep stringLength optionalString concatMapStrings;
       inherit (pkgs.lib.trivial) warnIf;
-      inherit (pkgs.lib.attrsets) attrValues mapAttrsToList filterAttrs attrNames mapAttrs foldlAttrs;
+      inherit (pkgs.lib.attrsets) attrValues mapAttrsToList filterAttrs attrNames mapAttrs foldlAttrs recursiveUpdate;
 
       pkgs = inputs.nixpkgs.legacyPackages."x86_64-linux";
 
@@ -286,17 +287,9 @@
         default = import ./module.nix;
       };
       checks.x86_64-linux = {
-        # This E2E test tests:
-        # * The module evaluates, bare minimum.
-        # * It is possible to define a system secret.
-        # * If you define a system secret, it is available in any service.
-        # TODO
-        # * If you define a secret, it is available in its service.
-        # * If you define a secret, it is not available in another service.
-        # * If you define a secret, it is not available if the service is not running.
-        # * If you define a system secret, it is not available to services without permissions.
         e2e-test = pkgs.nixosTest {
           name = "secrix-e2e-test";
+          extraPythonPackages = p: [ p.termcolor ];
           nodes = {
             machine = { config, ... }: {
               imports = [
@@ -306,31 +299,185 @@
               system.activationScripts.replaceHostKey = ''
                 mkdir -p /etc/ssh
                 cp ${./keys/test-host-key} /etc/ssh/ssh_host_ed25519_key
+                chmod 400 !!$
                 cp ${./keys/test-host-key.pub} /etc/ssh/ssh_host_ed25519_key.pub
+                chmod 644 !!$
               '';
               secrix = {
                 hostPubKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKn43IR9yp8zhEWUhRmiA+rnd05t99ubTMJY7/ljd+yj chloe@freyja";
                 defaultEncryptKeys.user = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM64lwxKaEiwWLsV5Y/g0/4ZGPN+Ri2gz15mHVd716pu chloe@freyja" ];
                 system.secrets.secret1.encrypted.file = ./secrets/system-secret1;
+                services = {
+                  test1.secrets.service-secret1.encrypted.file = ./secrets/service-secret1;
+                  test3.secrets.service-secret3.encrypted.file = ./secrets/service-secret3;
+                  test4.secrets.service-secret4.encrypted.file = ./secrets/service-secret4;
+                  test5.secrets.service-secret5.encrypted.file = ./secrets/service-secret5;
+                  test6.secrets.service-secret6 = {
+                    encrypted.file = ./secrets/service-secret6;
+                    decrypted.mode = "0271";
+                  };
+                  test7.secrets.service-secret7.encrypted.file = ./secrets/service-secret1;
+                  test8.secrets.service-secret1.encrypted.file = ./secrets/service-secret1;
+                };
               };
+              systemd.services = {
+                test1 = {
+                  script = ''
+                    set -x
+                    cat ${config.secrix.services.test1.secrets.service-secret1.decrypted.path}
+                  '';
+                  serviceConfig = {
+                    Type = "oneshot";
+                    User = "test1";
+                    RemainAfterExit = true;
+                  };
+                };
+                test2 = {
+                  script = ''
+                    set -x
+                    cat ${config.secrix.services.test1.secrets.service-secret1.decrypted.path}
+                  '';
+                  serviceConfig = {
+                    Type = "oneshot";
+                    User = "test2";
+                    RemainAfterExit = true;
+                  };
+                };
+                test3 = {
+                  script = ''
+                    set -x
+                    cat ${config.secrix.services.test1.secrets.service-secret1.decrypted.path}
+                  '';
+                  serviceConfig = {
+                    User = "test1";
+                    Type = "oneshot";
+                  };
+                };
+                test4 = {
+                  script = ''
+                    set -x
+                    cat /run/test4-keys/missing-secret
+                  '';
+                  serviceConfig = {
+                    User = "test4";
+                    Type = "oneshot";
+                  };
+                };
+                test5 = {
+                  script = ''
+                    set -x
+                    cat ${config.secrix.services.test5.secrets.service-secret5.decrypted.path}
+                  '';
+                };
+                test6 = {
+                  script = ''
+                    set -x
+                    [[ $(stat -c '%a' ${config.secrix.services.test6.secrets.service-secret6.decrypted.path}) == $((10#${config.secrix.services.test6.secrets.service-secret6.decrypted.mode})) ]]
+                  '';
+                  serviceConfig.Type = "oneshot";
+                };
+                test7 = {
+                  script = ''
+                    set -x
+                    cat ${config.secrix.services.test7.secrets.service-secret7.decrypted.path}
+                  '';
+                  serviceConfig.Type = "oneshot";
+                };
+                test8 = {
+                  script = ''
+                    set -x
+                    cat ${config.secrix.services.test8.secrets.service-secret1.decrypted.path}
+                  '';
+                  serviceConfig.Type = "oneshot";
+                };
+                any.script = ''
+                  set -x
+                  cat ${config.secrix.system.secrets.secret1.decrypted.path}
+                '';
+              };
+              users = foldl' (a: x: recursiveUpdate a {
+                users.${x} = {
+                  isSystemUser = true;
+                  group = x;
+                };
+                groups.${x} = {};
+              }) {} [ "test1" "test2" "test4" ];
             };
           };
-          testScript = ''
+          testScript = let
+            SKIP = r: xs: mapAttrs (_: _: ''
+              from termcolor import colored; print(colored("!!!!!!!!!!SKIPPED: ${r}!!!!!!!!!!", "red", attrs=["bold"]))
+            '') xs;
+            printTest = x: ''
+              print("==========${x}==========")
+            '';
+            cleanup = concatMapStrings (x: ''
+              machine.systemctl("stop test${toString x}.service")
+            '') (range 1 3);
+          in ''
             start_all()
-
-            # Wait for the machine to boot.
             machine.wait_for_unit("multi-user.target")
-
             machine.wait_for_unit("system-keys.service")
-            out = machine.succeed("journalctl -eu system-keys.service")
-            print(out)
-
-            # The machine secret exists.
-            machine.succeed("cat /run/system-keys/secret1")
-
-            # * If you define a system secret, it is available in any service.
-
-          '';
+          '' + concatMapStrings (x: ''
+            ${foldlAttrs (a: n: v: ''
+              ${a}
+              ${printTest n}
+              ${v}
+              ${cleanup}
+            '') "" x}
+          '') [
+            {
+              "The system secret exists." = ''
+                machine.succeed("cat /run/system-keys/secret1")
+              '';
+            }
+            {
+              "If you define a system secret, it is available in any service." = ''
+                machine.succeed("systemctl start any.service")
+                machine.succeed("cat /run/system-keys/secret1")
+              '';
+            }
+            {
+              "If you define a service secret, it is available in its service." = ''
+                machine.succeed("systemctl start test1.service")
+                machine.systemctl("stop test1.service")
+              '';
+            }
+            {
+              "If you define a service secret, it is not available in another service." = ''
+                machine.succeed("systemctl start test1.service")
+                machine.fail("systemctl start test2.service")
+              '';
+            }
+            {
+              "If you define a service secret, it is not available if the service is not running." = ''
+                machine.succeed("systemctl start test1.service")
+                ${cleanup}
+                machine.fail("systemctl start test3.service")
+              '';
+            }
+            {
+              "If a service fails to start, its keys should not exist." = ''
+                machine.fail("systemctl start test4.service")
+                machine.fail("cat /run/test4-keys/service-secret4")
+              '';
+            }
+            {
+              "A service secret should have the appropriate permissions set." = ''
+                machine.succeed("systemctl start test6.service")
+              '';
+            }
+            {
+              "A secret should be able to be reused without issue." = ''
+                machine.succeed("systemctl start test7.service")
+              '';
+            }
+            {
+              "Secrets under 2 different services should be able to have the same name." = ''
+                machine.succeed("systemctl start test8.service")
+              '';
+            }
+          ];
         };
       };
     };
