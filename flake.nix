@@ -181,7 +181,7 @@
           allSystemSecrets = flatten (mapAttrsToList (_: v: attrValues v.config.secrix.system.secrets) applicableConfs);
           allSecrets = allSystemSecrets ++ flatten (map (x: attrValues x.secrets) allServices);
           allUsers = flatten (map (x: x.encryptKeys) allSecrets);
-          allKeys = foldl' (a: x: a // mapAttrs (n: v: unique (v ++ (a.${n} or []))) x) {} allUsers;
+          allKeys = foldl' (a: x: a // mapAttrs (n: v: unique (v ++ (a.${n} or []))) x) {} (allUsers ++ (foldl' (a: x: a ++ [ x.config.secrix.defaultEncryptKeys ]) [] (attrValues applicableConfs)));
           hostKeys = mapAttrs (_: v: " -r '${v.config.secrix.hostPubKey}'") (filterAttrs (_: v': v'.config.secrix.hostPubKey != null) applicableConfs);
           ageBin = let
             bins = unique (map (x: x.config.secrix.ageBin) (attrValues applicableConfs));
