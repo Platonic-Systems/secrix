@@ -129,7 +129,7 @@
             };
             all-systems = {
               run = ''
-                recips+="''${hostKeys["$1"]}"
+                recips+="''${hostKeys[@]}"
               '';
               takes = 0;
             };
