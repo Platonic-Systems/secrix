@@ -176,14 +176,15 @@
           };
 
           edit = "\${VISUAL:-\${EDITOR:-${pkgs.neovim}/bin/nvim}}";
-          allServices = flatten (mapAttrsToList (_: v: attrValues v.config.secrix.services) fInputs.nixosConfigurations);
-          allSystemSecrets = flatten (mapAttrsToList (_: v: attrValues v.config.secrix.system.secrets) fInputs.nixosConfigurations);
+          applicableConfs = filterAttrs (_: v: v.config ? secrix) fInputs.nixosConfigurations;
+          allServices = flatten (mapAttrsToList (_: v: attrValues v.config.secrix.services) applicableConfs);
+          allSystemSecrets = flatten (mapAttrsToList (_: v: attrValues v.config.secrix.system.secrets) applicableConfs);
           allSecrets = allSystemSecrets ++ flatten (map (x: attrValues x.secrets) allServices);
           allUsers = flatten (map (x: x.encryptKeys) allSecrets);
           allKeys = foldl' (a: x: a // mapAttrs (n: v: unique (v ++ (a.${n} or []))) x) {} allUsers;
-          hostKeys = mapAttrs (_: v: " -r '${v.config.secrix.hostPubKey}'") (filterAttrs (_: v': v'.config.secrix.hostPubKey != null) fInputs.nixosConfigurations);
+          hostKeys = mapAttrs (_: v: " -r '${v.config.secrix.hostPubKey}'") (filterAttrs (_: v': v'.config.secrix.hostPubKey != null) applicableConfs);
           ageBin = let
-            bins = unique (map (x: x.config.secrix.ageBin) (attrValues fInputs.nixosConfigurations));
+            bins = unique (map (x: x.config.secrix.ageBin) (attrValues applicableConfs));
             l = last bins;
           in warnIf (length bins > 1) "More than one ageBin definition exists, using '${l}'." l;
         in (writeShellScript "secrix" ''
