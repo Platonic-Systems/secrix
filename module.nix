@@ -1,7 +1,7 @@
 { pkgs, config, ... }:
 let
   inherit (builtins) isFunction readFile;
-  inherit (pkgs) writeText copyPathToStore;
+  inherit (pkgs) writeText copyPathToStore writeShellScript;
   inherit (pkgs.lib.lists) foldl';
   inherit (pkgs.lib.strings) concatStringsSep;
   inherit (pkgs.lib.trivial) id;
@@ -322,62 +322,69 @@ in
 
   config =
     let
+      c = s: "${pkgs.coreutils}/bin/${s}";
+      runKeyDir = "/run/${cfg.system.secretsDir.name}";
       allSecrets = (foldlAttrs (a: _: v: a // foldlAttrs (a': _: v': a' // { ${v'.decrypted.name} = copyPathToStore v'.encrypted.file; }) { } v.secrets) { } cfg.services) //
         foldlAttrs (a: _: v: a // { ${v.decrypted.name} = copyPathToStore v.encrypted.file; }) { } cfg.system.secrets;
-      systemKeysService = { ${cfg.system.secretsServiceName} = {
-        wantedBy = [ "multi-user.target" ];
+        systemKeysServices = concatMapAttrs (n: v: let
+          runKeyPath = "${runKeyDir}/${v.decrypted.name}";
+        in { "secrix-system-secret-${n}" = {
+        wantedBy = [ "secrix-system-secrets.service" ];
+        after = [ "secrix-system-secrets.service" ];
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
-          RuntimeDirectory = cfg.system.secretsDir.name;
-          RuntimeDirectoryMode = cfg.system.secretsDir.permissions;
-          User = cfg.system.secretsDir.user;
-          Group = cfg.system.secretsDir.group;
+          ExecStop = writeShellScript "secrix-rm-${n}" ''
+            ${c "rm"} -f ${runKeyPath}
+          '';
         };
         script = let
-          runKeyDir = "/run/${cfg.system.secretsDir.name}";
-          cpKeys = mapAttrsToList
-            (_: v:
-              let
-                runKeyPath = "${runKeyDir}/${v.decrypted.name}";
-                c = s: "${pkgs.coreutils}/bin/${s}";
-                decrypt = p: ''
-                  ${cfg.ageBin} -d -i "${cfg.hostIdentityFile}" "${allSecrets.${v.decrypted.name}}" > "${p}"
-                '';
-                mkBuilder = s: ''
-                  inFile="$(${c "mktemp"})"
-                  ${decrypt "$inFile"}
-                  ${s}
-                  ${c "rm"} $inFile
-                '';
-                chPerms = ''
-                  ${c "chown"} ${v.decrypted.user}:${v.decrypted.group} "${runKeyPath}"
-                  ${c "chmod"} ${v.decrypted.mode} "${runKeyPath}"
-                '';
-                scr =
-                  if v.decrypted.builder == null then
-                    "${decrypt runKeyPath}"
-                  else if isFunction v.decrypted.builder then
-                    mkBuilder "${v.decrypted.builder runKeyPath}"
-                  else
-                    mkBuilder "${v.decrypted.builder}";
-              in
-              ''
-                set -x
-                ${c "mkdir"} -p "${runKeyDir}"
-                ${scr}
-                ${chPerms}
-              '')
-            cfg.system.secrets;
-        in
-        ''
-          ${concatStringsSep "\n" cpKeys}
+          decrypt = p: ''
+            ${cfg.ageBin} -d -i "${cfg.hostIdentityFile}" "${allSecrets.${v.decrypted.name}}" > "${p}"
+          '';
+          mkBuilder = s: ''
+            inFile="$(${c "mktemp"})"
+            ${decrypt "$inFile"}
+            ${s}
+            ${c "rm"} $inFile
+          '';
+          chPerms = ''
+            ${c "chown"} ${v.decrypted.user}:${v.decrypted.group} "${runKeyPath}"
+            ${c "chmod"} ${v.decrypted.mode} "${runKeyPath}"
+          '';
+          scr = if v.decrypted.builder == null then
+            "${decrypt runKeyPath}"
+          else if isFunction v.decrypted.builder then
+            mkBuilder "${v.decrypted.builder runKeyPath}"
+          else
+            mkBuilder "${v.decrypted.builder}";
+        in ''
+          ${c "mkdir"} -p ${runKeyDir}
+          ${scr}
+          ${chPerms}
         '';
-      }; };
+      }; }) cfg.system.secrets;
+      systemKeysMainService = {
+        secrix-system-secrets = {
+          script = ''
+            ${c "mkdir"} -p ${runKeyDir}
+          '';
+          wantedBy = [ "multi-user.target" ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            RuntimeDirectory = cfg.system.secretsDir.name;
+            RuntimeDirectoryMode = cfg.system.secretsDir.permissions;
+            User = cfg.system.secretsDir.user;
+            Group = cfg.system.secretsDir.group;
+            PropagatesStopTo = map (x: "secrix-system-secret-${x}.service") (attrNames cfg.system.secrets);
+          };
+        };
+      };
     in
     {
       # x - systemd service
-      systemd.services = systemKeysService // foldl'
+      systemd.services = systemKeysServices // systemKeysMainService // foldl'
         (a: x: a // {
           ${x.secretsServiceName} = {
             before = [ "${x.systemdService}.service" ];
@@ -394,7 +401,6 @@ in
                   (_: v:
                     let
                       runKeyPath = "${runKeyDir}/${v.decrypted.name}";
-                      c = s: "${pkgs.coreutils}/bin/${s}";
                       decrypt = p: ''
                         ${cfg.ageBin} -d -i "${cfg.hostIdentityFile}" "${allSecrets.${v.decrypted.name}}" > "${p}"
                       '';
