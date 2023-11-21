@@ -3,7 +3,7 @@ let
   inherit (builtins) isFunction readFile;
   inherit (pkgs) writeText copyPathToStore writeShellScript;
   inherit (pkgs.lib.lists) foldl';
-  inherit (pkgs.lib.strings) concatStringsSep;
+  inherit (pkgs.lib.strings) concatStringsSep optionalString;
   inherit (pkgs.lib.trivial) id;
   inherit (pkgs.lib.modules) mkForce;
   inherit (pkgs.lib.attrsets) mapAttrsToList attrValues concatMapAttrs attrNames;
@@ -410,7 +410,7 @@ in
                         ${s}
                         ${c "rm"} $inFile
                       '';
-                      chPerms = ''
+                      chPerms = optionalString (config.systemd.services.${x.systemdService}.serviceConfig.DynamicUser or false) ''
                         ${c "chown"} ${v.decrypted.user}:${v.decrypted.group} "${runKeyPath}"
                         ${c "chmod"} ${v.decrypted.mode} "${runKeyPath}"
                       '';
