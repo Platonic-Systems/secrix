@@ -330,7 +330,6 @@ in
           runKeyPath = "${runKeyDir}/${v.decrypted.name}";
         in { "secrix-system-secret-${n}" = {
         wantedBy = [ "secrix-system-secrets.service" ];
-        after = [ "secrix-system-secrets.service" ];
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
