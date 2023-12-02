@@ -176,141 +176,148 @@ in
         '';
       };
       services = mkOption {
-        type = types.attrsOf (types.submodule ({ name, config, ... }:
-          let
-            outer = { inherit name config; };
-          in
-          {
-            options = {
-              secretsDirName = mkOption {
-                type = types.str;
-                default = "${name}-keys";
-                description = ''
-                  The directory name for the service secrets.
-                '';
-              };
-              systemdService = mkOption {
-                type = types.str;
-                default = name;
-                description = ''
-                  The name fo the systemd service that the secrets contained within will be bound
-                  to. This defaults to the attribute name.
-                '';
-              };
-              additionalRuntimeDirNames = mkOption {
-                type = types.listOf types.str;
-                default = [ ];
-                description = ''
-                  In the case that the systemd service these secrets will be bound to has a
-                  RuntimeDirectory specified as a string, secrix will be unable to add an additional
-                  RuntimeDirectory, so add that here.
-                '';
-              };
-              forceRuntimeDirs = mkOption {
-                type = types.bool;
-                default = false;
-                description = ''
-                  Set this to true of the service these secrets will be bound to has a
-                  RuntimeDirectory already specified as a string.
-                '';
-              };
-              secretsServiceName = mkOption {
-                type = types.str;
-                default = "${name}-keys";
-                description = ''
-                  The name of the service that will decrypt the keys.
-                '';
-              };
-              secrets = mkOption {
-                type = types.attrsOf (types.submodule ({ name, config, ... }: {
-                  options = {
+        type = types.attrsOf (types.submodule (outer@{ name, config, ... }: {
+          options = {
+            secretsDirName = mkOption {
+              type = types.str;
+              default = "${name}-keys";
+              description = ''
+                The directory name for the service secrets.
+              '';
+            };
+            systemdService = mkOption {
+              type = types.str;
+              default = name;
+              description = ''
+                The name fo the systemd service that the secrets contained within will be bound
+                to. This defaults to the attribute name.
+              '';
+            };
+            additionalRuntimeDirNames = mkOption {
+              type = types.listOf types.str;
+              default = [ ];
+              description = ''
+                In the case that the systemd service these secrets will be bound to has a
+                RuntimeDirectory specified as a string, secrix will be unable to add an additional
+                RuntimeDirectory, so add that here.
+              '';
+            };
+            forceRuntimeDirs = mkOption {
+              type = types.bool;
+              default = false;
+              description = ''
+                Set this to true of the service these secrets will be bound to has a
+                RuntimeDirectory already specified as a string.
+              '';
+            };
+            secretsServiceName = mkOption {
+              type = types.str;
+              default = "${name}-keys";
+              description = ''
+                The name of the service that will decrypt the keys.
+              '';
+            };
+            secrets = mkOption {
+              type = types.attrsOf (types.submodule ({ name, config, ... }: {
+                options = {
+                  name = mkOption {
+                    type = types.str;
+                    default = name;
+                    description = ''
+                      The name of the secret. This defaults to the attribute name. This is simply
+                      a referential token to the secret, however if no name is set for the
+                      decrypted file, this will be used.
+                    '';
+                  };
+                  encryptKeys = mkOption {
+                    type = types.attrsOf (types.listOf types.str);
+                    default = cfg.defaultEncryptKeys;
+                    description = ''
+                      Public keys with which to encrypt the secret.
+                    '';
+                  };
+                  encrypted.file = mkOption {
+                    type = types.path;
+                    description = ''
+                      Local location of the secret.
+                    '';
+                  };
+                  decrypted = {
                     name = mkOption {
                       type = types.str;
-                      default = name;
+                      default = config.name;
                       description = ''
-                        The name of the secret. This defaults to the attribute name. This is simply
-                        a referential token to the secret, however if no name is set for the
-                        decrypted file, this will be used.
+                        The name of the decrypted file on disk. This defaults to the secret name.
                       '';
                     };
-                    encryptKeys = mkOption {
-                      type = types.attrsOf (types.listOf types.str);
-                      default = cfg.defaultEncryptKeys;
+                    mode = mkOption {
+                      type = types.str;
+                      default = "0400";
                       description = ''
-                        Public keys with which to encrypt the secret.
+                        Permissions of the secret when decrypted.
                       '';
                     };
-                    encrypted.file = mkOption {
-                      type = types.path;
+                    user = mkOption {
+                      type = types.nullOr types.str;
+                      default = let
+                        servUser = hasAttrByPath [ "serviceConfig" "User" ] sysConfig.systemd.services.${outer.config.systemdService};
+                        servDynUser = attrByPath [ "serviceConfig" "DynamicUser" ] false sysConfig.systemd.services.${outer.config.systemdService};
+                        user = attrByPath [ "serviceConfig" "User" ] "0" sysConfig.systemd.services.${outer.config.systemdService};
+                        userSearch = if user == "0" then "root" else user;
+                        sysUser = length (filter (x: x.name == userSearch) (attrValues (sysConfig.users.users or {}))) > 0;
+                      in if (servUser && sysUser) then
+                        user
+                      else if servDynUser then
+                        null
+                      else "0";
+                      # in "0";
                       description = ''
-                        Local location of the secret.
+                        Secret user.
                       '';
                     };
-                    decrypted = {
-                      name = mkOption {
-                        type = types.str;
-                        default = config.name;
-                        description = ''
-                          The name of the decrypted file on disk. This defaults to the secret name.
-                        '';
-                      };
-                      mode = mkOption {
-                        type = types.str;
-                        default = "0400";
-                        description = ''
-                          Permissions of the secret when decrypted.
-                        '';
-                      };
-                      user = mkOption {
-                        type = types.str;
-                        default = sysConfig.systemd.services.${outer.config.systemdService}.serviceConfig.User or "0";
-                        description = ''
-                          Secret user.
-                        '';
-                      };
-                      group = mkOption {
-                        type = types.str;
-                        default = sysConfig.users.users.${config.decrypted.user}.group or "0";
-                        description = ''
-                          Secret group.
-                        '';
-                      };
-                      path = mkOption {
-                        type = types.str;
-                        default = "/run/${outer.config.secretsDirName}/${config.name}";
-                        readOnly = true;
-                        description = ''
-                          The path to the secret when decrypted on disk. This is automatically set
-                          by secrix and is available only for reference.
-                        '';
-                      };
-                      builder = mkOption {
-                        type = types.nullOr (types.either types.lines (types.functionTo types.lines));
-                        default = null;
-                        description = ''
-                          A builder script (if needed) to perform additional actions on the secret
-                          before it ends up in its final location.
+                    group = mkOption {
+                      type = types.str;
+                      default = sysConfig.users.users.${config.decrypted.user}.group or "0";
+                      description = ''
+                        Secret group.
+                      '';
+                    };
+                    path = mkOption {
+                      type = types.str;
+                      default = "/run/${outer.config.secretsDirName}/${config.name}";
+                      readOnly = true;
+                      description = ''
+                        The path to the secret when decrypted on disk. This is automatically set
+                        by secrix and is available only for reference.
+                      '';
+                    };
+                    builder = mkOption {
+                      type = types.nullOr (types.either types.lines (types.functionTo types.lines));
+                      default = null;
+                      description = ''
+                        A builder script (if needed) to perform additional actions on the secret
+                        before it ends up in its final location.
 
-                          If this is a function that yields a string, it will be passed a single
-                          argument which is the final location of the built file.
+                        If this is a function that yields a string, it will be passed a single
+                        argument which is the final location of the built file.
 
-                          If this is a string, a special bash variable $inFile can be used to
-                          reference the secret as it is, however there will be no reference
-                          available to its final destination as that will be up to the builder. Use
-                          a string only if you know what you're doing.
-                        '';
-                      };
+                        If this is a string, a special bash variable $inFile can be used to
+                        reference the secret as it is, however there will be no reference
+                        available to its final destination as that will be up to the builder. Use
+                        a string only if you know what you're doing.
+                      '';
                     };
                   };
-                }));
-                description = ''
-                  An attribute set of secrets that will be decrypted on the system. Service secrets
-                  will be decrypted at the start of and will exist for the lifetime of the service
-                  they are bound to.
-                '';
-              };
+                };
+              }));
+              description = ''
+                An attribute set of secrets that will be decrypted on the system. Service secrets
+                will be decrypted at the start of and will exist for the lifetime of the service
+                they are bound to.
+              '';
             };
-          }));
+          };
+        }));
         default = { };
         description = ''
           An attribute set of systemd service names to which to bind secrets. All secrets bound to
@@ -409,7 +416,7 @@ in
                         ${s}
                         ${c "rm"} $inFile
                       '';
-                      chPerms = optionalString (config.systemd.services.${x.systemdService}.serviceConfig.DynamicUser or false) ''
+                      chPerms = optionalString (v.decrypted.user != null) ''
                         ${c "chown"} ${v.decrypted.user}:${v.decrypted.group} "${runKeyPath}"
                         ${c "chmod"} ${v.decrypted.mode} "${runKeyPath}"
                       '';
