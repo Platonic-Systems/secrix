@@ -164,7 +164,7 @@
             r = {
               long = "recipient";
               run = ''
-                recips+="-r '$1'"
+                recips+=" -r '$@'"
               '';
             };
             h = {
