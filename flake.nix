@@ -177,7 +177,7 @@
           };
 
           edit = "\${VISUAL:-\${EDITOR:-${pkgs.neovim}/bin/nvim}}";
-          applicableConfs = filterAttrs (_: v: v.config ? secrix) fInputs.nixosConfigurations;
+          applicableConfs = filterAttrs (_: v: v ? config.secrix) fInputs.nixosConfigurations;
           allServices = flatten (mapAttrsToList (_: v: attrValues v.config.secrix.services) applicableConfs);
           allSystemSecrets = flatten (mapAttrsToList (_: v: attrValues v.config.secrix.system.secrets) applicableConfs);
           allSecrets = allSystemSecrets ++ flatten (map (x: attrValues x.secrets) allServices);
