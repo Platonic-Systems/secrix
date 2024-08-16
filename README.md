@@ -78,7 +78,8 @@ The age bin to use for encryption and decryption.
 
 ### `secrix.hostIdentityFile`
 
-The private key of the host that will be decrypting the secret.
+The path of the private key of the host that will be decrypting the secret.
+This path is used on the target host.
 
 * Type: String
 * Default: `"/etc/ssh/ssh_host_ed25519_key"`
@@ -93,9 +94,11 @@ The default encryption keys for all secrets. This will be overriden for any give
 ### `secrix.hostPubKey`
 
 The public key for the host that the secrets will exist on.
+Specify in OpenSSH public key format.
 
 * Type: Null or String
 * Default: `null`
+* Example: "ssh-ed25519 AAAAC3Nz..."
 
 ### `secrix.system.secretsDir.name`
 
