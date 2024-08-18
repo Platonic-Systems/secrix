@@ -21,6 +21,9 @@ in
       ageBin = mkOption {
         type = types.str;
         default = "${pkgs.age}/bin/age";
+        defaultText = literalExpression ''
+          "''${pkgs.age}/bin/age"
+        '';
         description = ''
           The age bin to use for encryption and decryption.
         '';
@@ -78,6 +81,9 @@ in
               encryptKeys = mkOption {
                 type = types.attrsOf (types.listOf types.str);
                 default = cfg.defaultEncryptKeys;
+                defaultText = literalExpression ''
+                  config.secrix.defaultEncryptKeys
+                '';
                 description = ''
                   Public keys with which to encrypt the secret.
                 '';
@@ -92,6 +98,9 @@ in
                 name = mkOption {
                   type = types.str;
                   default = config.name;
+                  defaultText = literalExpression ''
+                    config.secrix.system.secrets.<name>.name
+                  '';
                   description = ''
                     The name of the decrypted file on disk. This defaults to the secret name.
                   '';
@@ -120,6 +129,9 @@ in
                 path = mkOption {
                   type = types.str;
                   default = "/run/${cfg.system.secretsDir.name}/${config.name}";
+                  defaultText = literalExpression ''
+                    "/run/''${config.secrix.system.secretsDir.name}/''${config.secrix.system.secrets.<name>.name}"
+                  '';
                   readOnly = true;
                   description = ''
                     The path to the secret when decrypted on disk. This is automatically set by
@@ -232,6 +244,9 @@ in
                   encryptKeys = mkOption {
                     type = types.attrsOf (types.listOf types.str);
                     default = cfg.defaultEncryptKeys;
+                    defaultText = literalExpression ''
+                      config.secrix.defaultEncryptKeys
+                    '';
                     description = ''
                       Public keys with which to encrypt the secret.
                     '';
@@ -246,6 +261,9 @@ in
                     name = mkOption {
                       type = types.str;
                       default = config.name;
+                      defaultText = literalExpression ''
+                        config.secrix.services.<name>.secrets.<name>.name
+                      '';
                       description = ''
                         The name of the decrypted file on disk. This defaults to the secret name.
                       '';
@@ -270,6 +288,9 @@ in
                       else if servDynUser then
                         null
                       else "0";
+                      defaultText = literalExpression ''
+                        with config.systemd.services.<name>.serviceConfig; User or (if DynamicUser then null else "root")
+                      '';
                       # in "0";
                       description = ''
                         Secret user.
@@ -278,6 +299,9 @@ in
                     group = mkOption {
                       type = types.str;
                       default = sysConfig.users.users.${config.decrypted.user}.group or "0";
+                      defaultText = literalExpression ''
+                        config.users.users.''${config.secrix.services.<name>.decrypted.group}.group
+                      '';
                       description = ''
                         Secret group.
                       '';
@@ -285,6 +309,10 @@ in
                     path = mkOption {
                       type = types.str;
                       default = "/run/${outer.config.secretsDirName}/${config.name}";
+                      defaultText = literalExpression ''
+                        let cfg = config.secrix.services.<name>; in
+                        "/run/''${cfg.secretsDirName}/''${cfg.name}"
+                      '';
                       readOnly = true;
                       description = ''
                         The path to the secret when decrypted on disk. This is automatically set
