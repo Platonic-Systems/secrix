@@ -194,10 +194,10 @@
           }
           function checkid {
             if [[ -z "$identityFile" ]]; then
-              echo "No given identity file."
+              echo "No given identity file." >&2
               exit 1
             elif ! [[ -e "$identityFile" ]]; then
-              echo "Identity file does not exist."
+              echo "Identity file does not exist." >&2
               exit 1
             fi
           }
@@ -224,12 +224,12 @@
             create)
               tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
               if ! ${edit} "$tmpsec"; then
-                echo "Editor exited with non-zero status. Abandoning."
+                echo "Editor exited with non-zero status. Abandoning." >&2
                 status=1
               else
                 tmpfin="$(${pkgs.coreutils}/bin/mktemp)"
                 if ! eval ${ageBin} -e $recips "$tmpsec" > "$tmpfin"; then
-                  echo "Encrypt failed with non-zero status. Abandoning."
+                  echo "Encrypt failed with non-zero status. Abandoning." >&2
                   status=1
                 else
                   ${pkgs.coreutils}/bin/mv "$tmpfin" "''${positionalOpts[1]}"
@@ -240,12 +240,12 @@
               checkid
               tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
               if ! eval ${ageBin} -d -i "$identityFile" "''${positionalOpts[1]}" > "$tmpsec"; then
-                echo "Decrypt failed with non-zero status. Abandoning."
+                echo "Decrypt failed with non-zero status. Abandoning." >&2
                 status=1
               else
                 tmpfin="$(${pkgs.coreutils}/bin/mktemp)"
                 if ! eval ${ageBin} -e $recips "$tmpsec" > "$tmpfin"; then
-                  echo "Reencrypt failed with non-zero status. Abandoning."
+                  echo "Reencrypt failed with non-zero status. Abandoning." >&2
                   status=1
                 else
                   ${pkgs.coreutils}/bin/mv "$tmpfin" "''${positionalOpts[1]}"
@@ -256,16 +256,16 @@
               checkid
               tmpsec="$(${pkgs.coreutils}/bin/mktemp)"
               if ! eval ${ageBin} -d -i "$identityFile" "''${positionalOpts[1]}" > "$tmpsec"; then
-                echo "Decrypt failed with non-zero status. Abandoning."
+                echo "Decrypt failed with non-zero status. Abandoning." >&2
                 status=1
               else
                 if ! ${edit} "$tmpsec"; then
-                  echo "Editor exited with non-zero status. Abandoning."
+                  echo "Editor exited with non-zero status. Abandoning." >&2
                   status=1
                 else
                   tmpfin="$(${pkgs.coreutils}/bin/mktemp)"
                   if ! eval ${ageBin} -e $recips "$tmpsec" > "$tmpfin"; then
-                    echo "Encrypt failed with non-zero status. Abandoning."
+                    echo "Encrypt failed with non-zero status. Abandoning." >&2
                     status=1
                   else
                     ${pkgs.coreutils}/bin/mv "$tmpfin" "''${positionalOpts[1]}"
@@ -274,7 +274,7 @@
               fi
             ;;
             *)
-              echo "Unknown action '""''${positionalOpts[0]}.'"
+              echo "Unknown action '""''${positionalOpts[0]}.'" >&2
             ;;
           esac
           ${pkgs.coreutils}/bin/rm -f "$tmpfin"
