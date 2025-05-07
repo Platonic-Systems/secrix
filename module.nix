@@ -404,6 +404,7 @@ in
             ${c "mkdir"} -p ${runKeyDir}
           '';
           wantedBy = [ "multi-user.target" ];
+          unitConfig.PropagatesStopTo = map (x: "secrix-system-secret-${x}.service") (attrNames cfg.system.secrets);
           serviceConfig = {
             Type = "oneshot";
             RemainAfterExit = true;
@@ -411,7 +412,6 @@ in
             RuntimeDirectoryMode = cfg.system.secretsDir.permissions;
             User = cfg.system.secretsDir.user;
             Group = cfg.system.secretsDir.group;
-            PropagatesStopTo = map (x: "secrix-system-secret-${x}.service") (attrNames cfg.system.secrets);
           };
         };
       };
