@@ -1,7 +1,8 @@
 { pkgs, config, ... }:
 let
-  inherit (builtins) isFunction readFile;
+  inherit (builtins) readFile;
   inherit (pkgs) writeText copyPathToStore writeShellScript;
+  inherit (pkgs.lib) isFunction;
   inherit (pkgs.lib.lists) foldl';
   inherit (pkgs.lib.strings) concatStringsSep optionalString;
   inherit (pkgs.lib.trivial) id;
