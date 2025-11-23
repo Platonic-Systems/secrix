@@ -193,9 +193,15 @@
           allKeys = foldl' (a: x: a // mapAttrs (n: v: unique (v ++ (a.${n} or []))) x) {} (allUsers ++ (foldl' (a: x: a ++ [ x.config.secrix.defaultEncryptKeys ]) [] (attrValues applicableConfs)));
           hostKeys = mapAttrs (_: v: " -r '${v.config.secrix.hostPubKey}'") (filterAttrs (_: v': v'.config.secrix.hostPubKey != null) applicableConfs);
           ageBin = let
-            bins = unique (map (x: x.config.secrix.ageBin) (attrValues applicableConfs));
-            l = last bins;
-          in warnIf (length bins > 1) "More than one ageBin definition exists, using '${l}'." l;
+            currentSystem = pkgs.system;
+            matching = attrValues (
+              filterAttrs (_: c: c.pkgs.system == currentSystem) applicableConfs
+            );
+            bins = unique (map (c: c.config.secrix.ageBin) matching);
+          in
+            if bins == []
+            then "${pkgs.age}/bin/age"
+            else builtins.elemAt bins (length bins - 1);
         in (writeShellScript "secrix" ''
           function help {
             ${help}
@@ -310,7 +316,7 @@
         default = import ./module.nix;
       };
       checks.x86_64-linux = {
-        e2e-test = pkgs.nixosTest {
+        e2e-test = pkgs.testers.nixosTest {
           name = "secrix-e2e-test";
           extraPythonPackages = p: [ p.termcolor ];
           nodes = {
