@@ -1,6 +1,6 @@
 # Secrix
 
-Secrex is based on ideas in [agenix](https://github.com/ryantm/agenix), however is written from the ground up.
+Secrix is based on ideas in [agenix](https://github.com/ryantm/agenix), however is written from the ground up.
 
 Secrix allows you to bind secrets to systemd services to ensure that their lifetime is only as long as the service itself. As well, it allows for system secrets, which are by default bound to the lifetime of the system. All secrets are stored in virtual memory and do not end up on disk.
 
