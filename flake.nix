@@ -311,6 +311,8 @@
           exit $status
         '').outPath;
       };
+      apps.x86_64-linux.secrix = self.secrix self;
+      apps.x86_64-linux.default = self.secrix self;
       nixosModules = {
         secrix = import ./module.nix;
         default = import ./module.nix;
