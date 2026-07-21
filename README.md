@@ -6,7 +6,13 @@ Secrix allows you to bind secrets to systemd services to ensure that their lifet
 
 Creating a service secret is as easy as `secrix.services.<systemd-service>.secrets.<name>.encrypted.file`. Its final location will end up in `secrix.services.<systemd-service>.secrets.<name>.decrypted.path`. System secrets are defined as `secrix.system.secrets`, with the same pattern as service secrets, minus the service.
 
-For encryption/decryption usage, see `nix run .#secrix -- --help`.
+For ad-hoc encryption with a public key, you can run directly:
+
+```
+nix run github:platonic-systems/secrix -- --help
+```
+
+For full usage with user and system keys from your own flake, see [Getting Started](#getting-started) below.
 
 ## Adding Secrix
 
@@ -16,13 +22,15 @@ inputs.secrix.url = "github:Platonic-Systems/secrix";
 
 ## Getting Started
 
-In your `flake.nix`, simply define an `app` as such:
+In your `flake.nix`, define an `app` as such:
 
 ```nix
 {
     apps.x86_64-linux.secrix = inputs.secrix.secrix self;
 }
 ```
+
+This wires secrix into your flake, giving it access to your `nixosConfigurations` so that `-u` (user) and `-s` (system) flags can resolve keys. Without this, only ad-hoc `-r` (recipient) encryption is available — which is the mode you get when running secrix directly from this repository.
 
 This in and of itself is enough to start using Secrix. Ideally, for ease of use, you should define some options that
 will make your life easier when using Secrix. Defining `secrix.defaultEncryptKeys` (or
