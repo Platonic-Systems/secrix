@@ -195,7 +195,7 @@
           ageBin = let
             currentSystem = pkgs.stdenv.hostPlatform.system;
             matching = attrValues (
-              filterAttrs (_: c: c.pkgs.system == currentSystem) applicableConfs
+              filterAttrs (_: c: c.pkgs.stdenv.hostPlatform.system == currentSystem) applicableConfs
             );
             bins = unique (map (c: c.config.secrix.ageBin) matching);
           in
