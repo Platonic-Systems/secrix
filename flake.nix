@@ -195,7 +195,7 @@
           ageBin = let
             currentSystem = pkgs.stdenv.hostPlatform.system;
             matching = attrValues (
-              filterAttrs (_: c: c.pkgs.system == currentSystem) applicableConfs
+              filterAttrs (_: c: c.pkgs.stdenv.hostPlatform.system == currentSystem) applicableConfs
             );
             bins = unique (map (c: c.config.secrix.ageBin) matching);
           in
@@ -316,6 +316,10 @@
       nixosModules = {
         secrix = import ./module.nix;
         default = import ./module.nix;
+      };
+      homeManagerModules = {
+        secrix = import ./module-home.nix;
+        default = import ./module-home.nix;
       };
       checks.x86_64-linux = {
         e2e-test = pkgs.testers.nixosTest {

@@ -424,6 +424,7 @@ in
           ${x.secretsServiceName} = {
             before = [ "${x.systemdService}.service" ];
             bindsTo = [ "${x.systemdService}.service" ];
+            unitConfig.PartOf = [ "${x.systemdService}.service" ];
             serviceConfig = {
               Type = "oneshot";
               RemainAfterExit = true;
