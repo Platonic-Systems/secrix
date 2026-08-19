@@ -1,12 +1,9 @@
 { config, lib, pkgs, ... }:
 let
-  inherit (builtins) readFile;
-  inherit (pkgs) writeText copyPathToStore writeShellScript;
+  inherit (pkgs) copyPathToStore writeShellScript;
   inherit (lib) isFunction mkOption mkIf types literalExpression;
   inherit (lib.lists) foldl';
-  inherit (lib.strings) concatStringsSep optionalString;
-  inherit (lib.trivial) id;
-  inherit (lib.modules) mkForce;
+  inherit (lib.strings) concatStringsSep;
   inherit (lib.attrsets) mapAttrsToList attrValues concatMapAttrs attrNames;
 
   foldlAttrs = lib.attrsets.foldlAttrs or (f: i: s: foldl' (a: n: f a n s.${n}) i (attrNames s));
@@ -291,120 +288,113 @@ in
       (foldlAttrs (a: _: v: a // foldlAttrs (a': _: v': a' // { ${v'.decrypted.name} = copyPathToStore v'.encrypted.file; }) { } v.secrets) { } cfg.services) //
       foldlAttrs (a: _: v: a // { ${v.decrypted.name} = copyPathToStore v.encrypted.file; }) { } cfg.secrets;
 
-    # Find the first available identity file
-    identityFile = let
-      existing = builtins.filter (p: builtins.pathExists p) cfg.identityPaths;
-    in
-      if existing != [] then builtins.head existing
-      else throw "secrix: No identity file found. Set secrix.identityPaths to point to your SSH keys.";
+    # Use the first configured identity path. The age command will fail
+    # at runtime with a clear error if the key doesn't exist.
+    identityFile = builtins.head cfg.identityPaths;
+
+    # Helper: build decrypt script for a secret
+    mkDecryptScript = v: runKeyDir: let
+      runKeyPath = "${runKeyDir}/${v.decrypted.name}";
+      decrypt = p: ''
+        ${cfg.ageBin} -d -i "${identityFile}" "${allSecrets.${v.decrypted.name}}" > "${p}"
+      '';
+      mkBuilder = s: ''
+        inFile="$(${c "mktemp"})"
+        ${decrypt "$inFile"}
+        ${s}
+        ${c "rm"} $inFile
+      '';
+      chPerms = ''
+        ${c "chmod"} ${v.decrypted.mode} "${runKeyPath}"
+      '';
+      scr = if v.decrypted.builder == null then
+        "${decrypt runKeyPath}"
+      else if isFunction v.decrypted.builder then
+        mkBuilder "${v.decrypted.builder runKeyPath}"
+      else
+        mkBuilder "${v.decrypted.builder}";
+    in ''
+      ${c "mkdir"} -p "${runKeyDir}"
+      ${scr}
+      ${chPerms}
+    '';
 
     # Session-level (user) secrets services
+    # Home Manager format: Unit/Service/Install sections (systemd-native)
     userKeysServices = concatMapAttrs (n: v: let
       runKeyPath = "${runKeyDir}/${v.decrypted.name}";
     in { "secrix-user-secret-${n}" = {
-      wantedBy = [ "secrix-user-secrets.service" ];
-      serviceConfig = {
+      Unit = {
+        Description = "secrix: decrypt user secret ${n}";
+        PropagatesStopTo = [ "secrix-user-secrets.service" ];
+      };
+      Service = {
         Type = "oneshot";
         RemainAfterExit = true;
+        ExecStart = writeShellScript "secrix-decrypt-${n}" (mkDecryptScript v runKeyDir);
         ExecStop = writeShellScript "secrix-rm-${n}" ''
           ${c "rm"} -f ${runKeyPath}
         '';
       };
-      script = let
-        decrypt = p: ''
-          ${cfg.ageBin} -d -i "${identityFile}" "${allSecrets.${v.decrypted.name}}" > "${p}"
-        '';
-        mkBuilder = s: ''
-          inFile="$(${c "mktemp"})"
-          ${decrypt "$inFile"}
-          ${s}
-          ${c "rm"} $inFile
-        '';
-        chPerms = ''
-          ${c "chmod"} ${v.decrypted.mode} "${runKeyPath}"
-        '';
-        scr = if v.decrypted.builder == null then
-          "${decrypt runKeyPath}"
-        else if isFunction v.decrypted.builder then
-          mkBuilder "${v.decrypted.builder runKeyPath}"
-        else
-          mkBuilder "${v.decrypted.builder}";
-      in ''
-        ${c "mkdir"} -p ${runKeyDir}
-        ${scr}
-        ${chPerms}
-      '';
+      Install = {
+        WantedBy = [ "secrix-user-secrets.service" ];
+      };
     }; }) cfg.secrets;
 
     userKeysMainService = {
       secrix-user-secrets = {
-        script = ''
-          ${c "mkdir"} -p ${runKeyDir}
-        '';
-        wantedBy = [ "default.target" ];
-        unitConfig.PropagatesStopTo = map (x: "secrix-user-secret-${x}.service") (attrNames cfg.secrets);
-        serviceConfig = {
+        Unit = {
+          Description = "secrix: user secrets directory";
+          PropagatesStopTo = map (x: "secrix-user-secret-${x}.service") (attrNames cfg.secrets);
+        };
+        Service = {
           Type = "oneshot";
           RemainAfterExit = true;
+          ExecStart = writeShellScript "secrix-mkdir" ''
+            ${c "mkdir"} -p ${runKeyDir}
+          '';
+        };
+        Install = {
+          WantedBy = [ "default.target" ];
         };
       };
     };
 
     # Service-bound secrets
+    # Home Manager format: Unit/Service/Install sections (systemd-native)
     serviceKeysServices = foldl'
       (a: x: a // {
         ${x.secretsServiceName} = {
-          before = [ "${x.systemdService}.service" ];
-          bindsTo = [ "${x.systemdService}.service" ];
-          unitConfig.PartOf = [ "${x.systemdService}.service" ];
-          serviceConfig = {
+          Unit = {
+            Description = "secrix: decrypt secrets for ${x.systemdService}";
+            Before = [ "${x.systemdService}.service" ];
+            BindsTo = [ "${x.systemdService}.service" ];
+            PartOf = [ "${x.systemdService}.service" ];
+          };
+          Service = {
             Type = "oneshot";
             RemainAfterExit = true;
-          };
-          script =
-            let
-              runKeyDir = "${userRuntimeDir}/${x.secretsDirName}";
+            ExecStart = let
+              serviceRunKeyDir = "${userRuntimeDir}/${x.secretsDirName}";
               cpKeys = mapAttrsToList
-                (_: v:
-                  let
-                    runKeyPath = "${runKeyDir}/${v.decrypted.name}";
-                    decrypt = p: ''
-                      ${cfg.ageBin} -d -i "${identityFile}" "${allSecrets.${v.decrypted.name}}" > "${p}"
-                    '';
-                    mkBuilder = s: ''
-                      inFile="$(${c "mktemp"})"
-                      ${decrypt "$inFile"}
-                      ${s}
-                      ${c "rm"} $inFile
-                    '';
-                    chPerms = ''
-                      ${c "chmod"} ${v.decrypted.mode} "${runKeyPath}"
-                    '';
-                    scr =
-                      if v.decrypted.builder == null then
-                        "${decrypt runKeyPath}"
-                      else if isFunction v.decrypted.builder then
-                        mkBuilder "${v.decrypted.builder runKeyPath}"
-                      else
-                        mkBuilder "${v.decrypted.builder}";
-                  in
-                  ''
-                    ${c "mkdir"} -p "${runKeyDir}"
-                    ${scr}
-                    ${chPerms}
-                  '')
+                (_: v: mkDecryptScript v serviceRunKeyDir)
                 x.secrets;
-            in
-            ''
+            in writeShellScript "secrix-decrypt-${x.secretsServiceName}" ''
               ${concatStringsSep "\n" cpKeys}
             '';
+          };
+          Install = { };
         };
         ${x.systemdService} = {
-          after = [ "${x.secretsServiceName}.service" ];
-          bindsTo = [ "${x.secretsServiceName}.service" ];
-          serviceConfig.Environment = [
-            "SECRIX_SECRETS_DIR=${userRuntimeDir}/${x.secretsDirName}"
-          ];
+          Unit = {
+            After = [ "${x.secretsServiceName}.service" ];
+            BindsTo = [ "${x.secretsServiceName}.service" ];
+          };
+          Service = {
+            Environment = [
+              "SECRIX_SECRETS_DIR=${userRuntimeDir}/${x.secretsDirName}"
+            ];
+          };
         };
       })
       { }
