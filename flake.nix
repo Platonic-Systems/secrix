@@ -193,9 +193,9 @@
           allKeys = foldl' (a: x: a // mapAttrs (n: v: unique (v ++ (a.${n} or []))) x) {} (allUsers ++ (foldl' (a: x: a ++ [ x.config.secrix.defaultEncryptKeys ]) [] (attrValues applicableConfs)));
           hostKeys = mapAttrs (_: v: " -r '${v.config.secrix.hostPubKey}'") (filterAttrs (_: v': v'.config.secrix.hostPubKey != null) applicableConfs);
           ageBin = let
-            currentSystem = pkgs.system;
+            currentSystem = pkgs.stdenv.hostPlatform.system;
             matching = attrValues (
-              filterAttrs (_: c: c.pkgs.system == currentSystem) applicableConfs
+              filterAttrs (_: c: c.pkgs.stdenv.hostPlatform.system == currentSystem) applicableConfs
             );
             bins = unique (map (c: c.config.secrix.ageBin) matching);
           in
@@ -314,6 +314,10 @@
       nixosModules = {
         secrix = import ./module.nix;
         default = import ./module.nix;
+      };
+      homeManagerModules = {
+        secrix = import ./module-home.nix;
+        default = import ./module-home.nix;
       };
       checks.x86_64-linux = {
         e2e-test = pkgs.testers.nixosTest {
